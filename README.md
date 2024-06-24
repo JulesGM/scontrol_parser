@@ -1,6 +1,6 @@
 # Description:
 
-Super simple utility to return the output of `scontrol show` parsed. 
+Super simple utility to return the output of `scontrol show` in a dict. 
 
 **Example:**
 
