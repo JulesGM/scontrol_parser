@@ -1,8 +1,11 @@
-import lark
+import os
 import subprocess as sp
-import fire
+from typing import Optional
 
-GRAMMAR = r"""
+import fire
+import lark
+
+_GRAMMAR = r"""
 start: kv_pair*
         
 kv_pair: key "=" value
@@ -18,7 +21,7 @@ value:    /[^ \n"]+/
 """
 
 
-class ScontrolTransformer(lark.Transformer):
+class _Transformer(lark.Transformer):
     def start(self, items):
         return dict(items)
     
@@ -31,33 +34,42 @@ class ScontrolTransformer(lark.Transformer):
         return (key, value)
 
 
-class ScontrolShowJobParser:
+class Parser:
 
     def __init__(self):
-        self._transformer = ScontrolTransformer()
-        self._parser = lark.Lark(GRAMMAR, start="start", parser="lalr")
+        self._transformer = _Transformer()
+        self._parser = lark.Lark(_GRAMMAR, start="start", parser="lalr")
 
-    def __call__(self, command_output):
+    def parse(self, command_output: str):
         parse_tree = self._parser.parse(command_output)
-        return  self._transformer.transform(parse_tree)
+        return self._transformer.transform(parse_tree)
+
+    def call(self, job_id: Optional[str | int] = None):
+        if job_id is None:
+            if not "SLURM_JOB_ID" in os.environ:
+                raise ValueError("`call` needs either a job id or a value in the SLURM_JOB_ID environment valriable.")
         
+            job_id = os.environ["SLURM_JOB_ID"]
+            
+        output = sp.check_output(["scontrol", "show", "job", str(job_id)], text=True)
+        
+        return self.parse(output)
 
-def parse_scontrol_show_job(output):
+    __call__ = call
+
+
+def parse(output):
     # Transformer to convert the parse tree into a dictionary
-    parser = ScontrolShowJobParser()
-    return parser(output)
-
-parse = parse_scontrol_show_job
+    parser = Parser()
+    return parser.parse(output)
 
 
-def scontrol_show_job(job_id):
-    output = sp.check_output(["scontrol", "show", "job", str(job_id)], text=True)
-    return parse_scontrol_show_job(output)
-
-call = scontrol_show_job
+def call(job_id = None):
+    parser = Parser()
+    return parser.call(job_id)
 
 
-def _test():
+def test():
     # Example usage
     scontrol_output = """
     JobId=4925680 JobName=interactive
@@ -94,7 +106,7 @@ def _test():
     
 if __name__ == "__main__":
     fire.Fire({
-            "parse_scontrol_show_job": parse_scontrol_show_job,
-            "scontrol_show_job": scontrol_show_job,
-            "test": _test,
+        "parse": parse,
+        "call": call,
+        "test": test,
     })
