@@ -1,6 +1,7 @@
 import os
 import subprocess as sp
-from typing import Optional
+from typing import Optional, Union
+
 
 import fire
 import lark
@@ -21,8 +22,11 @@ value:    /[^ \n"]+/
 """
 
 
+Parsed = dict[str, str]
+
+
 class _Transformer(lark.Transformer):
-    def start(self, items):
+    def start(self, items) -> Parsed:
         return dict(items)
     
     def kv_pair(self, items):
@@ -40,11 +44,17 @@ class Parser:
         self._transformer = _Transformer()
         self._parser = lark.Lark(_GRAMMAR, start="start", parser="lalr")
 
-    def parse(self, command_output: str):
+    def parse(self, command_output: str, sort: bool = False) -> Parsed:
         parse_tree = self._parser.parse(command_output)
-        return self._transformer.transform(parse_tree)
+        parsed =  self._transformer.transform(parse_tree)
 
-    def call(self, job_id: Optional[str | int] = None):
+        if sort:
+            parsed = dict(sorted(parsed.items()))
+
+        return parsed
+
+    def call(self, job_id: Optional[Union[str,int]] = None, sort: bool = False) -> Parsed:
+
         if job_id is None:
             if not "SLURM_JOB_ID" in os.environ:
                 raise ValueError("`call` needs either a job id or a value in the SLURM_JOB_ID environment valriable.")
@@ -53,20 +63,22 @@ class Parser:
             
         output = sp.check_output(["scontrol", "show", "job", str(job_id)], text=True)
         
-        return self.parse(output)
+        parsed = self.parse(output, sort=sort)
+
+        return parsed
 
     __call__ = call
 
 
-def parse(output):
+def parse(output: str, sort=False) -> Parsed:
     # Transformer to convert the parse tree into a dictionary
     parser = Parser()
-    return parser.parse(output)
+    return parser.parse(output, sort=sort)
 
 
-def call(job_id = None):
+def call(job_id: Optional[Union[int, str]] = None, sort: bool = False) -> Parsed:
     parser = Parser()
-    return parser.call(job_id)
+    return parser.call(job_id, sort=sort)
 
 
 def test():
@@ -102,6 +114,7 @@ def test():
     """
 
     return parse(scontrol_output)
+
 
     
 if __name__ == "__main__":
